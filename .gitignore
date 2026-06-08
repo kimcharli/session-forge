@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.env
+
+# uv
+uv.lock
+
+# pytest
+.pytest_cache/
+
+# Runtime data — lives in ~/.session-forge/, never in repo root
+sessions/
+insights/
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
