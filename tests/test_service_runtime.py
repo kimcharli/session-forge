@@ -100,3 +100,50 @@ def test_stop_service_removes_state_for_stale_pid(tmp_config):
     assert result["status"] == "down"
     assert "stale pid" in result["reason"]
     assert "proxy" not in read_service_state()
+
+
+@pytest.mark.asyncio
+async def test_ensure_service_uses_single_log_path_across_port_retries(tmp_config, monkeypatch):
+    from pathlib import Path
+
+    from session_forge.service_runtime import ensure_service
+
+    class DummyProc:
+        pid = 7777
+
+    attempts = {"count": 0}
+    log_path_calls = {"count": 0}
+
+    def port_in_use(_host: str, port: int) -> bool:
+        # First candidate 8080 is occupied. Next candidates are free.
+        return port == 8080
+
+    def fake_new_log_path(_service: str) -> Path:
+        log_path_calls["count"] += 1
+        return tmp_config / "logs" / "llama-single-attempt.log"
+
+    def fake_popen(args, start_new_session, stdout=None, stderr=None, env=None):
+        assert start_new_session is True
+        assert stdout is not None
+        assert stderr is not None
+        assert isinstance(env, dict)
+        assert "--port" in args
+        return DummyProc()
+
+    async def wait_healthy(_spec, _port: int, timeout_seconds: float = 12.0):
+        attempts["count"] += 1
+        # First process start is unhealthy, second one becomes healthy.
+        return attempts["count"] == 2
+
+    monkeypatch.setattr("session_forge.service_runtime._port_in_use", port_in_use)
+    monkeypatch.setattr("session_forge.service_runtime._new_log_path", fake_new_log_path)
+    monkeypatch.setattr("session_forge.service_runtime._pid_for_port", lambda _port: 7777)
+    monkeypatch.setattr("session_forge.service_runtime._wait_healthy", wait_healthy)
+    monkeypatch.setattr("session_forge.service_runtime.subprocess.Popen", fake_popen)
+
+    result = await ensure_service("llama", allow_start=True)
+
+    assert result["status"] == "up"
+    assert result["action"] == "started"
+    assert log_path_calls["count"] == 1
+    assert result["log_file"].endswith("llama-single-attempt.log")

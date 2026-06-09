@@ -28,6 +28,7 @@ dev = [
 
 [project.scripts]
 session-forge = "session_forge.cli:app"
+sf = "session_forge.cli:app"
 
 [build-system]
 requires = ["hatchling"]

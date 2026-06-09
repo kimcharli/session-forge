@@ -59,6 +59,9 @@ uv run session-forge services status
 # Stop all daemons
 uv run session-forge services stop
 
+# Short alias for the same CLI
+uv run sf services status
+
 # Point Claude Code at the proxy
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8888
 ```
@@ -79,7 +82,8 @@ Each service instance writes to its own file:
 
 - `{service}-{YYYYMMDD-HHMMSS}.log`
 
-The same file is reused for the lifetime of that instance.
+One startup invocation keeps a single log file across port retries, and that
+same file is reused for the lifetime of the started instance.
 
 ## LLM Backend
 

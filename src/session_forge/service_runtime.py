@@ -382,6 +382,8 @@ async def ensure_service(service: str, allow_start: bool) -> dict:
         }
 
     errors: list[str] = []
+    # One startup invocation gets one log file, even if multiple ports are tried.
+    log_path = _new_log_path(service)
     extra = (recorded_port,) if isinstance(recorded_port, int) else ()
     for candidate in _candidate_ports(
         spec.preferred_port,
@@ -394,7 +396,6 @@ async def ensure_service(service: str, allow_start: bool) -> dict:
             continue
 
         args = _build_start_args(spec.start_args, candidate)
-        log_path = _new_log_path(service)
         _log_line(log_path, "INFO", f"starting service with args: {' '.join(args)}")
 
         env = os.environ.copy()

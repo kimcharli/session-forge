@@ -94,6 +94,8 @@ The config/runtime consolidation is implemented.
 - Replace per-service fallback ranges with a shared fallback port pool.
 - Reuse running services by checking `service-ports.json` first, while still
   honoring configured host and validating service identity.
+- Keep one log file per startup invocation, even if multiple candidate ports are
+  tried before a daemon is reused or started successfully.
 
 ### Current Shape
 

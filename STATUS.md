@@ -46,6 +46,7 @@ Not ready for daily use.
 - Llama config consolidated to `llama.active_profile` and `llama.profiles`.
 - Startup reuse continues to honor configured host and verify service identity while checking `service-ports.json` first.
 - Per-service fallback ranges replaced with a shared fallback port pool.
+- Service startup now keeps one log file per invocation even when multiple candidate ports are tried before a service becomes healthy.
 
 ---
 
