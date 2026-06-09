@@ -120,15 +120,34 @@ def show_paths():
     """Show config and data paths."""
     from rich.console import Console
     from session_forge.config import config, config_path
-    from session_forge.paths import db_path, _base_dir
+    from session_forge.paths import db_path, _base_dir, service_ports_path
+    from session_forge.service_runtime import read_service_state
+
+    runtime = read_service_state()
+
+    def _runtime_port(name: str) -> str:
+        rec = runtime.get(name, {})
+        port = rec.get("port")
+        return str(port) if isinstance(port, int) else "-"
+
     console = Console()
     console.print(f"[bold]Config:[/bold]    {config_path()}")
     console.print(f"[bold]Base dir:[/bold]  {_base_dir()}")
     console.print(f"[bold]Database:[/bold]  {db_path()}")
     console.print(f"[bold]Projects:[/bold]  {_base_dir() / 'projects'}")
-    console.print(f"[bold]Proxy:[/bold]     {config().proxy.host}:{config().proxy.port}")
-    console.print(f"[bold]MCP:[/bold]       {config().mcp_server.url}")
-    console.print(f"[bold]Llama:[/bold]     {config().llama.server_url} ({config().llama.model_name})")
+    console.print(f"[bold]State file:[/bold] {service_ports_path()}")
+    console.print(
+        f"[bold]Proxy:[/bold]     {config().proxy.host}:{config().proxy.port}"
+        f" (active: {_runtime_port('proxy')})"
+    )
+    console.print(
+        f"[bold]MCP:[/bold]       {config().mcp_server.url}"
+        f" (active: {_runtime_port('mcp_server')})"
+    )
+    console.print(
+        f"[bold]Llama:[/bold]     {config().llama.server_url} ({config().llama.model_name})"
+        f" (active: {_runtime_port('llama')})"
+    )
 
 
 @app.command("edit-config")

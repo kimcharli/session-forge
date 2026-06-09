@@ -45,6 +45,9 @@ session:
   timeout_seconds: 300
 
 services:
+    # Startup command templates used by service runtime orchestration.
+    proxy_start_cmd: uv run session-forge proxy
+    mcp_server_start_cmd: uv run session-forge mcp-server
   # Command used by `service_up` MCP tool to start llama-server when it is down.
   # Use --hf-repo to load directly from Hugging Face (recommended).
   llama_start_cmd: >-
@@ -53,6 +56,14 @@ services:
     --port 8080
     --ctx-size 8192
     --n-gpu-layers 99
+    # Port ranges used when configured/default ports are occupied by another process.
+    # The configured service port is always tried first, then remaining range values.
+    proxy_port_range_start: 8888
+    proxy_port_range_end: 8898
+    mcp_server_port_range_start: 8000
+    mcp_server_port_range_end: 8010
+    llama_port_range_start: 8080
+    llama_port_range_end: 8090
 """
 
 # ── Dataclasses ───────────────────────────────────────────────────────────────
@@ -92,6 +103,8 @@ class SessionConfig:
 
 @dataclass
 class ServicesConfig:
+    proxy_start_cmd: str = "uv run session-forge proxy"
+    mcp_server_start_cmd: str = "uv run session-forge mcp-server"
     llama_start_cmd: str = (
         "llama-server"
         " --hf-repo Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M"
@@ -99,6 +112,12 @@ class ServicesConfig:
         " --ctx-size 8192"
         " --n-gpu-layers 99"
     )
+    proxy_port_range_start: int = 8888
+    proxy_port_range_end: int = 8898
+    mcp_server_port_range_start: int = 8000
+    mcp_server_port_range_end: int = 8010
+    llama_port_range_start: int = 8080
+    llama_port_range_end: int = 8090
 
 
 @dataclass

@@ -46,3 +46,11 @@ def test_project_name_from_path():
     assert project_name_from_path(None) == "unknown"
     assert project_name_from_path("unknown") == "unknown"
     assert project_name_from_path("") == "unknown"
+
+
+def test_service_ports_path(tmp_config):
+    from session_forge.paths import service_ports_path
+
+    p = service_ports_path()
+    assert p.name == "service-ports.json"
+    assert p.parent.exists()

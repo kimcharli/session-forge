@@ -57,3 +57,10 @@ def config_path() -> Path:
     """Expose config file path for CLI display."""
     from session_forge.config import config_path as _cp
     return _cp()
+
+
+def service_ports_path() -> Path:
+    """Runtime service port file under ~/.config/session-forge/."""
+    p = config_path().parent / "service-ports.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
