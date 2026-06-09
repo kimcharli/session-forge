@@ -117,6 +117,16 @@ class Config:
 Remove `pydantic-settings` from dependencies.
 Add `pyyaml>=6.0`.
 
+## Packaging And Tooling Metadata
+
+Use `uv` with modern PEP 735 dependency groups:
+
+- Development dependencies must be declared under `[dependency-groups].dev`
+- Do not use deprecated `tool.uv.dev-dependencies`
+- Keep `[tool.uv]` for uv-specific behavior only (for example, `package = true`)
+
+This prevents warnings during `uv run`, `uv sync`, and local package builds.
+
 ## Files Changed
 
 | File | Change |
