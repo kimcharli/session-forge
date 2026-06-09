@@ -8,6 +8,11 @@ Core storage and ingest pipeline are functional and tested.
 Proxy intercept, session correlation, and project detection are not yet implemented.
 Not ready for daily use.
 
+### Active Workstream
+
+- Service bring-up and port-resolution hardening:
+	- Track execution checklist in `specs/implementation-tasks.md`
+
 ---
 
 ## What Works (tested, 27/27 passing)
@@ -56,9 +61,10 @@ Not ready for daily use.
 1. `session_registry.py` — time-window + project-path session grouping
 2. `scripts/claude` + `POST /register-session` — project path injection
 3. SSE streaming fix in `proxy/forwarder.py`
-4. Live end-to-end test with real Claude Code session
-5. llama.cpp setup and first analysis run
-6. Copilot intercept via mitmproxy
+4. Service bring-up and port-resolution hardening (`specs/implementation-tasks.md`)
+5. Live end-to-end test with real Claude Code session
+6. llama.cpp setup and first analysis run
+7. Copilot intercept via mitmproxy
 
 ---
 
@@ -74,3 +80,4 @@ Not ready for daily use.
 | `specs/storage-layout.md` | `~/.session-forge/` directory layout |
 | `specs/config.md` | `config.yaml` design and loading |
 | `specs/analysis-prompts.md` | LLM prompt templates |
+| `specs/implementation-tasks.md` | Service bring-up + runtime port tracking checklist |
