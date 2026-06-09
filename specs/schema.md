@@ -59,6 +59,34 @@
 
 ---
 
+## MCP Tool Responses
+
+### `service_status`
+
+```json
+{
+  "proxy":      "up" | "down",
+  "mcp_server": "up" | "down",
+  "llama":      "up" | "down",
+  "proxy_url":  "http://127.0.0.1:8888/healthz",
+  "mcp_url":    "http://127.0.0.1:8000/healthz",
+  "llama_url":  "http://127.0.0.1:8080/health"
+}
+```
+
+### `service_up`
+
+```json
+{
+  "service": "llama",
+  "action":  "started" | "none",
+  "cmd":     "<llama_start_cmd from config>",
+  "note":    "started in background; check service_status in a few seconds"
+}
+```
+
+---
+
 ## Known Gaps & Spec References
 
 | Gap | Spec |

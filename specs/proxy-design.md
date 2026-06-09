@@ -54,3 +54,46 @@ Claude Code uses SSE streaming responses. The proxy must:
 ## Latency Budget
 
 Logging is fully async and fire-and-forget. Target proxy overhead: < 5ms p99.
+
+## Health Endpoints
+
+Both the proxy and the MCP server expose a lightweight health endpoint:
+
+| Service | Endpoint | Response |
+|---|---|---|
+| proxy | `GET /healthz` | `{"status": "ok", "service": "proxy"}` |
+| mcp_server | `GET /healthz` | `{"status": "ok", "service": "mcp_server"}` |
+| llama-server | `GET /health` | built-in llama.cpp endpoint |
+
+These are used by the `service_status` MCP tool to determine which services are
+running. The `/healthz` route is registered **before** the catch-all proxy route
+so it is never forwarded upstream.
+
+## MCP Service Management Tools
+
+Two MCP tools are registered in `mcp_server/server.py`:
+
+### `service_status() → dict`
+
+Pings all three health endpoints and returns:
+
+```json
+{
+  "proxy":      "up" | "down",
+  "mcp_server": "up" | "down",
+  "llama":      "up" | "down"
+}
+```
+
+### `service_up(service="llama") → dict`
+
+Brings up a service that is currently down:
+
+- `"llama"` — reads `services.llama_start_cmd` from config.yaml and launches it
+  with `subprocess.Popen(..., start_new_session=True)`. Returns immediately;
+  caller should poll `service_status` to confirm startup.
+- `"proxy"` / `"mcp_server"` — returns the CLI command the user must run;
+  cannot be auto-started because they are the callers of the MCP server.
+
+Both tools read configuration exclusively from
+`~/.config/session-forge/config.yaml`.

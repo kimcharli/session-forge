@@ -56,6 +56,16 @@ storage:
 
 session:
   timeout_seconds: 300
+
+services:
+  # Command used by the `service_up` MCP tool to start llama-server when it is down.
+  # Use --hf-repo to load directly from Hugging Face (recommended).
+  llama_start_cmd: >-
+    llama-server
+    --hf-repo Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M
+    --port 8080
+    --ctx-size 8192
+    --n-gpu-layers 99
 ```
 
 ## Loading Priority
@@ -112,6 +122,23 @@ class Config:
 - `_ensure_config_dir()` writes `config.yaml` on first run
 - No `README.md` written to `~/.session-forge/`
 
+## Services Config
+
+`ServicesConfig` dataclass holds the llama-server startup command:
+
+```python
+@dataclass
+class ServicesConfig:
+    llama_start_cmd: str = "llama-server --hf-repo ..."
+```
+
+`services.llama_start_cmd` is the shell command the `service_up` MCP tool runs
+when llama-server is not responding. The command is launched with
+`subprocess.Popen(..., start_new_session=True)` so it survives terminal closure.
+
+Proxy and mcp_server cannot be auto-started by the MCP tool because they are
+typically the callers of the MCP server — users must start them via the CLI.
+
 ## Dependency Change
 
 Remove `pydantic-settings` from dependencies.
@@ -138,3 +165,6 @@ This prevents warnings during `uv run`, `uv sync`, and local package builds.
 | `tests/` | Replace `SF_BASE_DIR` env fixture with `SF_CONFIG` pointing to temp yaml |
 | `AGENTS.md` | Update conventions |
 | `specs/storage-layout.md` | Update to reflect config.yaml replaces README + .env |
+| `session_forge/config.py` | Add `ServicesConfig` dataclass + `services` section to default yaml |
+| `session_forge/mcp_server/server.py` | Add `service_status` and `service_up` MCP tools |
+| `session_forge/proxy/app.py` | Add `/healthz` endpoint |
