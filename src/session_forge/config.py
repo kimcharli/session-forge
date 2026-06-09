@@ -43,6 +43,16 @@ storage:
 
 session:
   timeout_seconds: 300
+
+services:
+  # Command used by `service_up` MCP tool to start llama-server when it is down.
+  # Use --hf-repo to load directly from Hugging Face (recommended).
+  llama_start_cmd: >-
+    llama-server
+    --hf-repo Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M
+    --port 8080
+    --ctx-size 8192
+    --n-gpu-layers 99
 """
 
 # ── Dataclasses ───────────────────────────────────────────────────────────────
@@ -81,12 +91,24 @@ class SessionConfig:
 
 
 @dataclass
+class ServicesConfig:
+    llama_start_cmd: str = (
+        "llama-server"
+        " --hf-repo Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M"
+        " --port 8080"
+        " --ctx-size 8192"
+        " --n-gpu-layers 99"
+    )
+
+
+@dataclass
 class Config:
     proxy: ProxyConfig = field(default_factory=ProxyConfig)
     mcp_server: McpServerConfig = field(default_factory=McpServerConfig)
     llama: LlamaConfig = field(default_factory=LlamaConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     session: SessionConfig = field(default_factory=SessionConfig)
+    services: ServicesConfig = field(default_factory=ServicesConfig)
 
 
 # ── Config file path ──────────────────────────────────────────────────────────
@@ -128,6 +150,7 @@ def _load() -> Config:
         llama=_section("llama", LlamaConfig),
         storage=_section("storage", StorageConfig),
         session=_section("session", SessionConfig),
+        services=_section("services", ServicesConfig),
     )
 
 

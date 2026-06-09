@@ -23,6 +23,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="session-forge proxy", lifespan=lifespan)
 
 
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok", "service": "proxy"}
+
+
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def proxy(request: Request, path: str):
     from session_forge.config import config

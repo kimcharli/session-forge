@@ -1,8 +1,11 @@
 """FastMCP server + FastAPI /ingest endpoint."""
 
+import shlex
+import subprocess
 import uuid
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastmcp import FastMCP
 from pydantic import BaseModel
@@ -114,9 +117,90 @@ def _extract_response_content(resp: dict) -> str:
     return ""
 
 
+# ── Health endpoint ────────────────────────────────────────────────────────────
+
+@http_app.get("/healthz")
+async def healthz():
+    return {"status": "ok", "service": "mcp_server"}
+
+
 # ── FastMCP tools ──────────────────────────────────────────────────────────────
 
 mcp = FastMCP("session-forge")
+
+
+async def _check(url: str) -> bool:
+    """Return True if url responds 200, False otherwise."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(url)
+            return r.status_code == 200
+    except Exception:
+        return False
+
+
+@mcp.tool()
+async def service_status() -> dict:
+    """Check whether proxy, mcp_server, and llama-server are reachable.
+
+    Returns a dict with keys proxy, mcp_server, llama — each "up" or "down".
+    Configuration is read from ~/.config/session-forge/config.yaml.
+    """
+    from session_forge.config import config
+    cfg = config()
+    proxy_url = f"http://{cfg.proxy.host}:{cfg.proxy.port}/healthz"
+    mcp_url = f"{cfg.mcp_server.url}/healthz"
+    llama_url = f"{cfg.llama.server_url}/health"
+
+    proxy_up, mcp_up, llama_up = await _check(proxy_url), await _check(mcp_url), await _check(llama_url)
+    return {
+        "proxy": "up" if proxy_up else "down",
+        "mcp_server": "up" if mcp_up else "down",
+        "llama": "up" if llama_up else "down",
+        "proxy_url": proxy_url,
+        "mcp_url": mcp_url,
+        "llama_url": llama_url,
+    }
+
+
+@mcp.tool()
+async def service_up(service: str = "llama") -> dict:
+    """Start a service if it is currently down.
+
+    Only llama-server can be started automatically — its startup command is
+    read from services.llama_start_cmd in config.yaml.
+
+    proxy and mcp_server must be started via the CLI (session-forge proxy /
+    session-forge mcp-server), because they are typically the callers of this
+    MCP server.
+
+    Args:
+        service: one of "llama", "proxy", "mcp_server". Defaults to "llama".
+    """
+    from session_forge.config import config
+    cfg = config()
+
+    if service == "llama":
+        llama_url = f"{cfg.llama.server_url}/health"
+        if await _check(llama_url):
+            return {"service": "llama", "action": "none", "reason": "already up"}
+        cmd = shlex.split(cfg.services.llama_start_cmd)
+        subprocess.Popen(cmd, start_new_session=True)
+        return {
+            "service": "llama",
+            "action": "started",
+            "cmd": cfg.services.llama_start_cmd,
+            "note": "started in background; check service_status in a few seconds",
+        }
+
+    if service in ("proxy", "mcp_server"):
+        return {
+            "service": service,
+            "action": "none",
+            "reason": f"{service} must be started manually: uv run session-forge {service.replace('_', '-')}",
+        }
+
+    return {"service": service, "action": "none", "reason": f"unknown service: {service}"}
 
 
 @mcp.tool()
