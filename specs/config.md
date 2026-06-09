@@ -58,6 +58,11 @@ session:
   timeout_seconds: 300
 
 services:
+  # Startup command templates used by runtime orchestration.
+  # These should run worker mode commands to avoid recursive daemon startup.
+  proxy_start_cmd: uv run session-forge proxy --foreground
+  mcp_server_start_cmd: uv run session-forge mcp-server --foreground
+
   # Command used by the `service_up` MCP tool to start llama-server when it is down.
   # Use --hf-repo to load directly from Hugging Face (recommended).
   llama_start_cmd: >-
@@ -66,6 +71,14 @@ services:
     --port 8080
     --ctx-size 8192
     --n-gpu-layers 99
+
+  # Fallback ranges when preferred ports are occupied by other processes.
+  proxy_port_range_start: 8888
+  proxy_port_range_end: 8898
+  mcp_server_port_range_start: 8000
+  mcp_server_port_range_end: 8010
+  llama_port_range_start: 8080
+  llama_port_range_end: 8090
 ```
 
 ## Loading Priority
@@ -124,20 +137,47 @@ class Config:
 
 ## Services Config
 
-`ServicesConfig` dataclass holds the llama-server startup command:
+`ServicesConfig` dataclass holds startup commands and fallback port ranges for
+managed services.
 
 ```python
 @dataclass
 class ServicesConfig:
+  proxy_start_cmd: str = "uv run session-forge proxy"
+  mcp_server_start_cmd: str = "uv run session-forge mcp-server"
     llama_start_cmd: str = "llama-server --hf-repo ..."
+  proxy_port_range_start: int = 8888
+  proxy_port_range_end: int = 8898
+  mcp_server_port_range_start: int = 8000
+  mcp_server_port_range_end: int = 8010
+  llama_port_range_start: int = 8080
+  llama_port_range_end: int = 8090
 ```
 
-`services.llama_start_cmd` is the shell command the `service_up` MCP tool runs
-when llama-server is not responding. The command is launched with
-`subprocess.Popen(..., start_new_session=True)` so it survives terminal closure.
+`service_up` / runtime orchestration use these fields to:
 
-Proxy and mcp_server cannot be auto-started by the MCP tool because they are
-typically the callers of the MCP server — users must start them via the CLI.
+- validate and reuse existing services by identity
+- start missing services with configured commands
+- choose fallback ports from configured ranges when preferred ports are occupied
+
+Daemon lifecycle behavior:
+
+- `uv run session-forge mcp-server` starts/reuses `llama`, `proxy`, and `mcp_server`
+  as detached daemons and returns immediately.
+- Companion commands are exposed under `session-forge services`:
+  - `start`
+  - `status`
+  - `stop`
+  - `restart`
+- Per-instance logs are written to `~/.session-forge/logs/{service}-{timestamp}.log`
+  and include severity markers (`INFO`, `WARNING`, `ERROR`).
+
+Runtime service state is stored in:
+
+- `~/.config/session-forge/service-ports.json`
+
+This file tracks effective runtime ports and identity metadata for `proxy`,
+`mcp_server`, and `llama`.
 
 ## Dependency Change
 
@@ -168,3 +208,5 @@ This prevents warnings during `uv run`, `uv sync`, and local package builds.
 | `session_forge/config.py` | Add `ServicesConfig` dataclass + `services` section to default yaml |
 | `session_forge/mcp_server/server.py` | Add `service_status` and `service_up` MCP tools |
 | `session_forge/proxy/app.py` | Add `/healthz` endpoint |
+| `session_forge/service_runtime.py` | Add identity-aware reuse, startup, fallback port resolution, state-file writes |
+| `session_forge/cli.py` | Add active/effective port display and mcp-server fallback startup behavior |

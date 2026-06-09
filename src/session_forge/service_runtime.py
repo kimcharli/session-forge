@@ -1,9 +1,10 @@
-"""Service runtime orchestration and identity-aware port management."""
+"""Service runtime orchestration with daemon lifecycle and persistent logs."""
 
 import asyncio
 import json
 import os
 import shlex
+import signal
 import socket
 import subprocess
 import tempfile
@@ -16,10 +17,11 @@ from urllib.parse import urlparse
 import httpx
 
 from session_forge.config import Config, config
-from session_forge.paths import service_ports_path
+from session_forge.paths import logs_dir, service_ports_path
 
 
 _STATE_LOCK = threading.Lock()
+_MANAGED_SERVICES = ("proxy", "mcp_server", "llama")
 
 
 @dataclass
@@ -33,6 +35,14 @@ class ServiceSpec:
     expected_service_marker: str | None
     start_cmd: str
     cmd_signature: str
+
+
+def _now_iso() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _ts_compact() -> str:
+    return time.strftime("%Y%m%d-%H%M%S", time.localtime())
 
 
 def _normalize_range(start: int, end: int) -> tuple[int, int]:
@@ -132,6 +142,13 @@ def _upsert_state(service: str, record: dict) -> None:
     with _STATE_LOCK:
         data = _read_state_raw()
         data[service] = record
+        _write_state_raw(data)
+
+
+def _remove_state(service: str) -> None:
+    with _STATE_LOCK:
+        data = _read_state_raw()
+        data.pop(service, None)
         _write_state_raw(data)
 
 
@@ -255,6 +272,17 @@ def _build_start_args(start_cmd: str, port: int) -> list[str]:
     return _replace_or_append_port_arg(args, port)
 
 
+def _new_log_path(service: str) -> Path:
+    return logs_dir() / f"{service}-{_ts_compact()}.log"
+
+
+def _log_line(path: Path, severity: str, message: str) -> None:
+    line = f"{_now_iso()} [{severity.upper()}] {message}\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(line)
+
+
 async def _wait_healthy(spec: ServiceSpec, port: int, timeout_seconds: float = 12.0) -> bool:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
@@ -264,17 +292,20 @@ async def _wait_healthy(spec: ServiceSpec, port: int, timeout_seconds: float = 1
     return False
 
 
-def _runtime_record(spec: ServiceSpec, pid: int, port: int, reused: bool) -> dict:
-    return {
+def _runtime_record(spec: ServiceSpec, pid: int, port: int, reused: bool, log_file: str | None = None) -> dict:
+    rec = {
         "service_name": spec.name,
         "pid": pid,
         "port": port,
-        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "started_at": _now_iso(),
         "cmd_signature": spec.cmd_signature,
         "health_url": f"http://{spec.host}:{port}{spec.health_path}",
         "service_identity": spec.expected_service_marker or "llama-server",
         "reused": reused,
     }
+    if log_file:
+        rec["log_file"] = log_file
+    return rec
 
 
 async def ensure_service(service: str, allow_start: bool) -> dict:
@@ -291,10 +322,10 @@ async def ensure_service(service: str, allow_start: bool) -> dict:
     existing = state.get(service, {})
     pid = existing.get("pid")
     port = existing.get("port")
+    log_file = existing.get("log_file")
     if isinstance(pid, int) and isinstance(port, int):
         if await _is_valid_instance(spec, pid, port):
-            record = _runtime_record(spec, pid, port, reused=True)
-            _upsert_state(service, record)
+            _upsert_state(service, _runtime_record(spec, pid, port, reused=True, log_file=log_file))
             return {
                 "service": service,
                 "status": "up",
@@ -302,12 +333,13 @@ async def ensure_service(service: str, allow_start: bool) -> dict:
                 "configured_port": configured_port,
                 "effective_port": port,
                 "action": "reused",
+                "log_file": log_file,
             }
 
     running = await _discover_running(spec)
     if running is not None:
         pid, port = running
-        _upsert_state(service, _runtime_record(spec, pid, port, reused=True))
+        _upsert_state(service, _runtime_record(spec, pid, port, reused=True, log_file=log_file))
         return {
             "service": service,
             "status": "up",
@@ -315,6 +347,7 @@ async def ensure_service(service: str, allow_start: bool) -> dict:
             "configured_port": configured_port,
             "effective_port": port,
             "action": "reused",
+            "log_file": log_file,
         }
 
     if not allow_start:
@@ -325,23 +358,44 @@ async def ensure_service(service: str, allow_start: bool) -> dict:
             "configured_port": configured_port,
             "effective_port": None,
             "action": "none",
+            "log_file": log_file,
         }
 
     errors: list[str] = []
     for candidate in _candidate_ports(spec.preferred_port, spec.range_start, spec.range_end):
         if _port_in_use(spec.host, candidate):
+            errors.append(f"port {candidate} already in use")
             continue
 
         args = _build_start_args(spec.start_cmd, candidate)
+        log_path = _new_log_path(service)
+        _log_line(log_path, "INFO", f"starting service with args: {' '.join(args)}")
+
+        env = os.environ.copy()
+        if service == "mcp_server":
+            env["SF_MCP_EFFECTIVE_PORT"] = str(candidate)
+
         try:
-            proc = subprocess.Popen(args, start_new_session=True)
+            with log_path.open("a", encoding="utf-8") as logf:
+                proc = subprocess.Popen(
+                    args,
+                    start_new_session=True,
+                    stdout=logf,
+                    stderr=subprocess.STDOUT,
+                    env=env,
+                )
         except Exception as exc:
             errors.append(f"start failed on port {candidate}: {exc}")
+            _log_line(log_path, "ERROR", f"start failed on port {candidate}: {exc}")
             continue
 
         if await _wait_healthy(spec, candidate):
             pid = _pid_for_port(candidate) or proc.pid
-            _upsert_state(service, _runtime_record(spec, pid, candidate, reused=False))
+            _upsert_state(
+                service,
+                _runtime_record(spec, pid, candidate, reused=False, log_file=str(log_path)),
+            )
+            _log_line(log_path, "INFO", f"service is healthy on port {candidate} (pid={pid})")
             return {
                 "service": service,
                 "status": "up",
@@ -350,9 +404,15 @@ async def ensure_service(service: str, allow_start: bool) -> dict:
                 "effective_port": candidate,
                 "action": "started",
                 "cmd": " ".join(args),
+                "log_file": str(log_path),
             }
 
         errors.append(f"health check timeout on port {candidate}")
+        _log_line(log_path, "WARNING", f"health check timeout on port {candidate}")
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except Exception:
+            pass
 
     return {
         "service": service,
@@ -363,12 +423,69 @@ async def ensure_service(service: str, allow_start: bool) -> dict:
         "action": "none",
         "reason": "no available healthy port in configured range",
         "errors": errors,
+        "log_file": log_file,
     }
+
+
+def stop_service(service: str) -> dict:
+    """Stop a managed service by pid from runtime state."""
+    if service not in _MANAGED_SERVICES:
+        return {"service": service, "status": "unknown", "action": "none", "reason": "unknown service"}
+
+    state = read_service_state()
+    rec = state.get(service)
+    if not rec:
+        return {"service": service, "status": "down", "action": "none", "reason": "not running"}
+
+    pid = rec.get("pid")
+    if not isinstance(pid, int) or not _pid_alive(pid):
+        _remove_state(service)
+        return {"service": service, "status": "down", "action": "none", "reason": "stale pid record"}
+
+    log_file = rec.get("log_file")
+    log_path = Path(log_file) if isinstance(log_file, str) and log_file else None
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError as exc:
+        if log_path:
+            _log_line(log_path, "ERROR", f"stop failed for pid {pid}: {exc}")
+        return {"service": service, "status": "up", "action": "none", "reason": f"stop failed: {exc}"}
+
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline and _pid_alive(pid):
+        time.sleep(0.1)
+
+    if _pid_alive(pid):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+    _remove_state(service)
+    if log_path:
+        _log_line(log_path, "INFO", f"service stopped (pid={pid})")
+    return {"service": service, "status": "down", "action": "stopped", "pid": pid}
 
 
 async def service_status_snapshot() -> dict:
     """Return identity-aware status for all managed services."""
     out: dict[str, dict] = {}
-    for service in ("proxy", "mcp_server", "llama"):
+    for service in _MANAGED_SERVICES:
         out[service] = await ensure_service(service, allow_start=False)
+    return out
+
+
+async def ensure_all_daemons() -> dict:
+    """Start/reuse all managed services as detached daemons."""
+    out: dict[str, dict] = {}
+    for service in ("llama", "proxy", "mcp_server"):
+        out[service] = await ensure_service(service, allow_start=True)
+    return out
+
+
+def stop_all_daemons() -> dict:
+    """Stop all managed services."""
+    out: dict[str, dict] = {}
+    for service in ("mcp_server", "proxy", "llama"):
+        out[service] = stop_service(service)
     return out

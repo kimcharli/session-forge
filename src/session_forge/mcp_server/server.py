@@ -1,5 +1,7 @@
 """FastMCP server + FastAPI /ingest endpoint."""
 
+import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -30,6 +32,28 @@ class IngestPayload(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from session_forge.config import config
+    from session_forge.service_runtime import _upsert_state, read_service_state
+
+    cfg = config()
+    host = cfg.mcp_server.host
+    port = int(os.environ.get("SF_MCP_EFFECTIVE_PORT", cfg.mcp_server.port))
+    existing = read_service_state().get("mcp_server", {})
+    log_file = existing.get("log_file") if isinstance(existing, dict) else None
+    _upsert_state(
+        "mcp_server",
+        {
+            "service_name": "mcp_server",
+            "pid": os.getpid(),
+            "port": port,
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "cmd_signature": "session-forge mcp-server",
+            "health_url": f"http://{host}:{port}/healthz",
+            "service_identity": "mcp_server",
+            "reused": True,
+            "log_file": log_file,
+        },
+    )
     yield
 
 

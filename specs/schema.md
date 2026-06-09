@@ -65,12 +65,30 @@
 
 ```json
 {
-  "proxy":      "up" | "down",
-  "mcp_server": "up" | "down",
-  "llama":      "up" | "down",
-  "proxy_url":  "http://127.0.0.1:8888/healthz",
-  "mcp_url":    "http://127.0.0.1:8000/healthz",
-  "llama_url":  "http://127.0.0.1:8080/health"
+  "proxy": {
+    "status": "up" | "down",
+    "identity": "matched" | "missing",
+    "configured_port": 8888,
+    "effective_port": 8888 | null,
+    "action": "reused" | "none",
+    "log_file": "~/.session-forge/logs/proxy-*.log" | null
+  },
+  "mcp_server": {
+    "status": "up" | "down",
+    "identity": "matched" | "missing",
+    "configured_port": 8000,
+    "effective_port": 8000 | null,
+    "action": "reused" | "none",
+    "log_file": "~/.session-forge/logs/mcp_server-*.log" | null
+  },
+  "llama": {
+    "status": "up" | "down",
+    "identity": "matched" | "missing",
+    "configured_port": 8080,
+    "effective_port": 8080 | null,
+    "action": "reused" | "none",
+    "log_file": "~/.session-forge/logs/llama-*.log" | null
+  }
 }
 ```
 
@@ -79,11 +97,22 @@
 ```json
 {
   "service": "llama",
-  "action":  "started" | "none",
-  "cmd":     "<llama_start_cmd from config>",
-  "note":    "started in background; check service_status in a few seconds"
+  "status": "up" | "down",
+  "identity": "matched" | "missing",
+  "configured_port": 8080,
+  "effective_port": 8081 | null,
+  "action": "started" | "reused" | "none",
+  "cmd": "<resolved start command>",
+  "reason": "<optional reason when down>",
+  "log_file": "~/.session-forge/logs/llama-*.log" | null
 }
 ```
+
+Runtime state persists these service records to:
+
+- `~/.config/session-forge/service-ports.json`
+
+and includes `log_file` for daemon instances started by runtime orchestration.
 
 ---
 

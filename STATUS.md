@@ -1,21 +1,22 @@
 # Status — session-forge
 
-> Last updated: 2026-06-08
+> Last updated: 2026-06-09
 
 ## Phase: Active Development — Pre-Alpha
 
 Core storage and ingest pipeline are functional and tested.
+Daemon lifecycle management for llama/proxy/mcp_server is implemented.
 Proxy intercept, session correlation, and project detection are not yet implemented.
 Not ready for daily use.
 
 ### Active Workstream
 
-- Service bring-up and port-resolution hardening:
-	- Track execution checklist in `specs/implementation-tasks.md`
+- Session continuity and project detection implementation:
+	- Track follow-on work in `specs/session-correlation.md` and `specs/project-detection.md`
 
 ---
 
-## What Works (tested, 27/27 passing)
+## What Works (tested, 35/35 passing)
 
 | Component | Status | Notes |
 |---|---|---|
@@ -24,11 +25,13 @@ Not ready for daily use.
 | `mcp_server/storage.py` | ✅ Done | SQLModel schema, WAL mode, CRUD, project filtering |
 | `mcp_server/sidecar.py` | ✅ Done | Async-safe markdown writer, per-session locks |
 | `mcp_server/server.py` | ✅ Done | `/ingest` endpoint, FastMCP tools |
+| `service_runtime.py` | ✅ Done | Identity-aware reuse, daemon orchestration, fallback ports, runtime state-file writes, per-instance log files |
 | `proxy/logger.py` | ✅ Done | Tool detection, Anthropic + Gemini payload parsing |
 | `proxy/forwarder.py` | ✅ Scaffolded | Basic forwarding works; SSE streaming incomplete |
 | `proxy/app.py` | ✅ Scaffolded | Routes and forwards; untested against live traffic |
 | `analyzer/prompts.py` | ✅ Done | Prompt templates |
 | `analyzer/client.py` | ✅ Scaffolded | llama-server client written; no llama.cpp running yet |
+| `cli.py` services commands | ✅ Done | `services start/status/stop/restart` and daemon-first `mcp-server` |
 
 ---
 
@@ -39,7 +42,7 @@ Not ready for daily use.
 | Session correlation | `specs/session-correlation.md` | Every turn still gets a new session_id |
 | Project detection | `specs/project-detection.md` | `project_path` always `"unknown"`; no wrapper scripts |
 | `/register-session` endpoint | `specs/project-detection.md` | Not in `server.py` yet |
-| Concurrency: `StaticPool` pragma | `specs/concurrency.md` | WAL is in; pragma listener needs validation |
+| Runtime test edge cases | `specs/implementation-tasks.md` | Core daemon/runtime scenarios are covered; keep extending integration coverage |
 | Wrapper scripts | `specs/project-detection.md` | `scripts/claude`, `scripts/gemini` not written |
 
 ---
@@ -61,10 +64,9 @@ Not ready for daily use.
 1. `session_registry.py` — time-window + project-path session grouping
 2. `scripts/claude` + `POST /register-session` — project path injection
 3. SSE streaming fix in `proxy/forwarder.py`
-4. Service bring-up and port-resolution hardening (`specs/implementation-tasks.md`)
-5. Live end-to-end test with real Claude Code session
-6. llama.cpp setup and first analysis run
-7. Copilot intercept via mitmproxy
+4. Live end-to-end test with real Claude Code session
+5. llama.cpp setup and first analysis run
+6. Copilot intercept via mitmproxy
 
 ---
 

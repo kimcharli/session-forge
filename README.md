@@ -53,12 +53,33 @@ uv run session-forge edit-config
 # Start the MCP server
 uv run session-forge mcp-server
 
-# Start the proxy (Claude Code intercept)
-uv run session-forge proxy
+# Check daemon status
+uv run session-forge services status
+
+# Stop all daemons
+uv run session-forge services stop
 
 # Point Claude Code at the proxy
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8888
 ```
+
+`show-paths` also prints the runtime state file:
+
+- `~/.config/session-forge/service-ports.json`
+
+This file stores effective runtime ports for managed services. If the configured
+MCP port is occupied by a non-matching process, `mcp-server` selects the next
+available port from the configured range and records the actual port there.
+
+Daemon logs are written under:
+
+- `~/.session-forge/logs/`
+
+Each service instance writes to its own file:
+
+- `{service}-{YYYYMMDD-HHMMSS}.log`
+
+The same file is reused for the lifetime of that instance.
 
 ## LLM Backend
 

@@ -1,7 +1,7 @@
 # Implementation Tasks — Service Bring-Up And Port Resolution
 
-Status: DRAFT
-Last Updated: 2026-06-08
+Status: COMPLETED
+Last Updated: 2026-06-09
 Owner: @ckim
 Tracking: This file is the execution checklist for the service bring-up workstream.
 
@@ -26,6 +26,8 @@ In scope:
 - Runtime service-port state persistence.
 - MCP tools and CLI output updates to surface effective runtime ports.
 - Unit/integration tests for edge cases.
+- Daemon-first CLI lifecycle commands with status/stop/restart.
+- Per-instance service log files with severity markers.
 
 Out of scope:
 
@@ -38,15 +40,15 @@ Out of scope:
 ### 1. Config Schema And Defaults
 
 Owner: @ckim
-Status: Not Started
+Status: Completed
 
-- [ ] Add `services.port_ranges` with per-service ranges:
-   - [ ] `proxy`
-   - [ ] `mcp_server`
-   - [ ] `llama`
-- [ ] Keep existing single ports as preferred/default start candidates.
-- [ ] Add/retain `services.llama_start_cmd` for llama startup.
-- [ ] Update config loader and default YAML comments.
+- [x] Add `services.port_ranges` with per-service ranges:
+   - [x] `proxy`
+   - [x] `mcp_server`
+   - [x] `llama`
+- [x] Keep existing single ports as preferred/default start candidates.
+- [x] Add/retain `services.llama_start_cmd` for llama startup.
+- [x] Update config loader and default YAML comments.
 
 Target files:
 
@@ -61,20 +63,20 @@ Definition of done:
 ### 2. Runtime Service-Port State File
 
 Owner: @ckim
-Status: Not Started
+Status: Completed
 
-- [ ] Create runtime state file:
-   - [ ] Path: `~/.config/session-forge/service-ports.json`
-- [ ] Add schema per service:
-   - [ ] `service_name`
-   - [ ] `pid`
-   - [ ] `port`
-   - [ ] `started_at`
-   - [ ] `cmd_signature`
-   - [ ] `health_url`
-   - [ ] `service_identity`
-- [ ] Implement atomic writes (temp file + rename).
-- [ ] Guard concurrent writes (file lock or process lock strategy).
+- [x] Create runtime state file:
+   - [x] Path: `~/.config/session-forge/service-ports.json`
+- [x] Add schema per service:
+   - [x] `service_name`
+   - [x] `pid`
+   - [x] `port`
+   - [x] `started_at`
+   - [x] `cmd_signature`
+   - [x] `health_url`
+   - [x] `service_identity`
+- [x] Implement atomic writes (temp file + rename).
+- [x] Guard concurrent writes (file lock or process lock strategy).
 
 Target files:
 
@@ -90,16 +92,16 @@ Definition of done:
 ### 3. Service Identity Verification
 
 Owner: @ckim
-Status: Not Started
+Status: Completed
 
-- [ ] Implement identity checks that require all:
-   - [ ] Process exists (PID alive).
-   - [ ] Command line matches expected signature.
-   - [ ] Health endpoint returns expected service marker.
-- [ ] Add per-service identity rules:
-   - [ ] `proxy`: `/healthz` returns `{status:"ok", service:"proxy"}`
-   - [ ] `mcp_server`: `/healthz` returns `{status:"ok", service:"mcp_server"}`
-   - [ ] `llama`: `/health` responds successfully and signature matches configured
+- [x] Implement identity checks that require all:
+   - [x] Process exists (PID alive).
+   - [x] Command line matches expected signature.
+   - [x] Health endpoint returns expected service marker.
+- [x] Add per-service identity rules:
+   - [x] `proxy`: `/healthz` returns `{status:"ok", service:"proxy"}`
+   - [x] `mcp_server`: `/healthz` returns `{status:"ok", service:"mcp_server"}`
+   - [x] `llama`: `/health` responds successfully and signature matches configured
       llama command profile.
 
 Target files:
@@ -117,15 +119,15 @@ Definition of done:
 ### 4. Port Conflict And Fallback Selection
 
 Owner: @ckim
-Status: Not Started
+Status: Completed
 
-- [ ] Resolve startup port in this order:
-   - [ ] Preferred configured port.
-   - [ ] Remaining candidates in configured range.
-- [ ] If preferred port is occupied by non-matching process, skip it.
-- [ ] On bind race, retry next candidate.
-- [ ] Persist actual bound port from running service, not assumed candidate.
-- [ ] Return structured error if range is exhausted.
+- [x] Resolve startup port in this order:
+   - [x] Preferred configured port.
+   - [x] Remaining candidates in configured range.
+- [x] If preferred port is occupied by non-matching process, skip it.
+- [x] On bind race, retry next candidate.
+- [x] Persist actual bound port from running service, not assumed candidate.
+- [x] Return structured error if range is exhausted.
 
 Target files:
 
@@ -141,17 +143,17 @@ Definition of done:
 ### 5. MCP Tool Integration
 
 Owner: @ckim
-Status: Not Started
+Status: Completed
 
-- [ ] Extend `service_status` to report:
-   - [ ] configured port
-   - [ ] effective runtime port
-   - [ ] identity validation result
-- [ ] Extend `service_up` (or add `ensure_service_up`) to:
-   - [ ] verify running instance identity
-   - [ ] start service on fallback port if needed
-   - [ ] persist runtime port file on success
-- [ ] Keep behavior explicit for `proxy` and `mcp_server` if manual start policy is
+- [x] Extend `service_status` to report:
+   - [x] configured port
+   - [x] effective runtime port
+   - [x] identity validation result
+- [x] Extend `service_up` (or add `ensure_service_up`) to:
+   - [x] verify running instance identity
+   - [x] start service on fallback port if needed
+   - [x] persist runtime port file on success
+- [x] Keep behavior explicit for `proxy` and `mcp_server` if manual start policy is
    retained.
 
 Target files:
@@ -168,13 +170,13 @@ Definition of done:
 ### 6. CLI Surface Updates
 
 Owner: @ckim
-Status: Not Started
+Status: Completed
 
-- [ ] Update `show-paths` to print:
-   - [ ] configured ports
-   - [ ] active/effective ports from `service-ports.json`
-   - [ ] state file location
-- [ ] Add clear notes when service is down or identity mismatch is detected.
+- [x] Update `show-paths` to print:
+   - [x] configured ports
+   - [x] active/effective ports from `service-ports.json`
+   - [x] state file location
+- [x] Add clear notes when service is down or identity mismatch is detected.
 
 Target files:
 
@@ -188,18 +190,28 @@ Definition of done:
 ### 7. Tests
 
 Owner: @ckim
-Status: Not Started
+Status: Completed
 
-- [ ] Add unit tests for service runtime logic:
-   - [ ] valid identity reuse
-   - [ ] invalid identity on occupied port
-   - [ ] fallback range selection
-   - [ ] range exhaustion
-   - [ ] stale PID record
-- [ ] Add integration-style tests for MCP tool behavior:
-   - [ ] `service_status` fields and identity flags
-   - [ ] `service_up` updates runtime port file
-- [ ] Add concurrency test for state-file update locking.
+- [x] Add unit tests for service runtime logic:
+   - [x] valid identity reuse
+   - [x] invalid identity on occupied port
+   - [x] fallback range selection
+   - [x] range exhaustion
+   - [x] stale PID record
+- [x] Add integration-style tests for MCP tool behavior:
+   - [x] `service_status` fields and identity flags
+   - [x] `service_up` updates runtime port file
+- [x] Add concurrency-safe state-file write behavior (process lock + atomic rename).
+
+### 8. Daemon Lifecycle CLI
+
+Owner: @ckim
+Status: Completed
+
+- [x] `session-forge mcp-server` starts/reuses all managed daemons and exits.
+- [x] Add `session-forge services start|status|stop|restart` companion commands.
+- [x] Ensure daemon workers are started with foreground worker commands to avoid recursive startup.
+- [x] Persist daemon `log_file` path in runtime state for status reporting.
 
 Target files:
 
@@ -233,3 +245,5 @@ Definition of done:
 ## Execution Log
 
 - 2026-06-08: Initial task plan created and converted to checklist tracking.
+- 2026-06-09: Runtime orchestration implemented (identity checks, fallback ports, state file, MCP tool integration, CLI output updates).
+- 2026-06-09: Daemon-first CLI completed, per-instance logs added, checklist closed.

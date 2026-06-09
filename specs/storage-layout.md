@@ -13,6 +13,8 @@
 ```
 ~/.session-forge/
 ├── sessions.db                              ← global DB (all projects, tools)
+├── logs/                                    ← daemon lifecycle/service stdout logs
+│   └── {service}-{YYYYMMDD-HHMMSS}.log
 └── projects/
     └── {project-name}/                      ← CWD basename, e.g. "ck-apstra-tool"
         └── {tool}/                          ← "claude-code" | "gemini-cli" | "copilot"
@@ -55,6 +57,10 @@
 Runtime configuration and storage explanation live in
 `~/.config/session-forge/config.yaml`, which is written on first run and never
 overwritten after creation.
+
+Runtime service status and effective ports are persisted in:
+
+- `~/.config/session-forge/service-ports.json`
 
 ## Global DB Rationale
 

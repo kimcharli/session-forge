@@ -63,4 +63,13 @@ def service_ports_path() -> Path:
     """Runtime service port file under ~/.config/session-forge/."""
     p = config_path().parent / "service-ports.json"
     p.parent.mkdir(parents=True, exist_ok=True)
+    if not p.exists():
+        p.write_text("{}\n", encoding="utf-8")
     return p
+
+
+def logs_dir() -> Path:
+    """Persistent logs directory for daemonized services."""
+    path = _ensure_base_dir() / "logs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path

@@ -3,9 +3,18 @@
 How to point Claude Code, Gemini CLI, and GitHub Copilot at the session-forge
 MCP server so they can call `service_status` and `service_up`.
 
-**Prerequisite:** `session-forge mcp-server` must be running before the client
-connects. The default address is `http://127.0.0.1:8000` (configurable in
-`~/.config/session-forge/config.yaml`).
+**Prerequisite:** `session-forge mcp-server` starts/reuses all managed daemons
+before the client connects. The preferred MCP address is
+`http://127.0.0.1:8000` (configurable in `~/.config/session-forge/config.yaml`).
+
+Important: treat `8000` as the preferred default, not a guaranteed fixed port.
+When that port is occupied by a non-matching process, session-forge can select
+an alternate port from the configured range.
+
+Use either of these to discover the effective runtime port:
+
+- `uv run session-forge show-paths`
+- `~/.config/session-forge/service-ports.json` (`mcp_server.port`)
 
 ---
 
@@ -117,13 +126,19 @@ Once connected, the following tools are exposed by the session-forge MCP server:
 ## Typical startup workflow
 
 ```
-# 1. Start the MCP server
+# 1. Start/reuse all service daemons (llama, proxy, mcp_server)
 uv run session-forge mcp-server
 
-# 2. Start the proxy (optional — needed for live session capture)
-uv run session-forge proxy
+# 2. Verify daemon status
+uv run session-forge services status
 
 # 3. From inside Claude Code / Gemini CLI / Copilot, ask:
 #    "Call service_status"
 #    → if llama is down: "Call service_up with service=llama"
+```
+
+To stop everything:
+
+```bash
+uv run session-forge services stop
 ```

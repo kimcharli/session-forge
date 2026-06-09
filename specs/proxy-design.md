@@ -79,9 +79,27 @@ Pings all three health endpoints and returns:
 
 ```json
 {
-  "proxy":      "up" | "down",
-  "mcp_server": "up" | "down",
-  "llama":      "up" | "down"
+  "proxy": {
+    "status": "up" | "down",
+    "configured_port": 8888,
+    "effective_port": 8888 | null,
+    "identity": "matched" | "missing",
+    "action": "reused" | "none"
+  },
+  "mcp_server": {
+    "status": "up" | "down",
+    "configured_port": 8000,
+    "effective_port": 8000 | null,
+    "identity": "matched" | "missing",
+    "action": "reused" | "none"
+  },
+  "llama": {
+    "status": "up" | "down",
+    "configured_port": 8080,
+    "effective_port": 8080 | null,
+    "identity": "matched" | "missing",
+    "action": "reused" | "none"
+  }
 }
 ```
 
@@ -89,11 +107,34 @@ Pings all three health endpoints and returns:
 
 Brings up a service that is currently down:
 
-- `"llama"` — reads `services.llama_start_cmd` from config.yaml and launches it
-  with `subprocess.Popen(..., start_new_session=True)`. Returns immediately;
-  caller should poll `service_status` to confirm startup.
-- `"proxy"` / `"mcp_server"` — returns the CLI command the user must run;
-  cannot be auto-started because they are the callers of the MCP server.
+- Reuses already-running services only when identity checks pass.
+- Starts missing services with configured startup commands.
+- If preferred port is occupied by another process, selects the next free port
+  in configured range and records effective runtime port.
 
 Both tools read configuration exclusively from
 `~/.config/session-forge/config.yaml`.
+
+Effective runtime ports and metadata are persisted to:
+
+- `~/.config/session-forge/service-ports.json`
+
+## Daemon Lifecycle Commands
+
+Service lifecycle is managed through CLI runtime orchestration:
+
+- `uv run session-forge mcp-server` starts/reuses all three services as detached daemons
+  (`llama`, `proxy`, `mcp_server`) and exits after reporting status.
+- `uv run session-forge services status` reports current identity-aware status.
+- `uv run session-forge services stop` stops all managed daemons.
+- `uv run session-forge services restart` stops and then starts all managed daemons.
+
+Each started service instance writes to its own log file under:
+
+- `~/.session-forge/logs/{service}-{YYYYMMDD-HHMMSS}.log`
+
+Lifecycle logging includes explicit severity labels:
+
+- `INFO` for startup/healthy/stopped events
+- `WARNING` for health-check timeout conditions
+- `ERROR` for startup/stop failures

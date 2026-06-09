@@ -46,8 +46,8 @@ session:
 
 services:
     # Startup command templates used by service runtime orchestration.
-    proxy_start_cmd: uv run session-forge proxy
-    mcp_server_start_cmd: uv run session-forge mcp-server
+    proxy_start_cmd: uv run session-forge proxy --foreground
+    mcp_server_start_cmd: uv run session-forge mcp-server --foreground
   # Command used by `service_up` MCP tool to start llama-server when it is down.
   # Use --hf-repo to load directly from Hugging Face (recommended).
   llama_start_cmd: >-
@@ -103,8 +103,8 @@ class SessionConfig:
 
 @dataclass
 class ServicesConfig:
-    proxy_start_cmd: str = "uv run session-forge proxy"
-    mcp_server_start_cmd: str = "uv run session-forge mcp-server"
+    proxy_start_cmd: str = "uv run session-forge proxy --foreground"
+    mcp_server_start_cmd: str = "uv run session-forge mcp-server --foreground"
     llama_start_cmd: str = (
         "llama-server"
         " --hf-repo Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M"
