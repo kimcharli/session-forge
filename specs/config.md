@@ -26,6 +26,10 @@ Anyone finding `~/.session-forge/` is directed to `~/.config/session-forge/confi
 
 ## Default config.yaml
 
+Current implementation writes defaults from the packaged
+`src/session_forge/default-config.yaml` and uses it to create
+`~/.config/session-forge/config.yaml` when it is absent.
+
 ```yaml
 # session-forge configuration
 # Source: https://github.com/kimcharli/session-forge
@@ -36,20 +40,33 @@ Anyone finding `~/.session-forge/` is directed to `~/.config/session-forge/confi
 #   {base_dir}/projects/{project}/{tool}/insights/   — LLM recommendations
 #
 # Edit this file to change ports, model, or storage location.
-# This file is never overwritten by session-forge once created.
+# This file is copied to ~/.config/session-forge/config.yaml on first run.
 
 proxy:
   host: 127.0.0.1
-  port: 8888
+  preferred_port: 8888
+  start_cmd: uv run session-forge proxy --foreground
 
 mcp_server:
   host: 127.0.0.1
-  port: 8000
+  preferred_port: 8000
+  start_cmd: uv run session-forge mcp-server --foreground
 
 llama:
-  server_url: http://127.0.0.1:8080
-  model_name: qwen2.5-coder-14b
-  context_size: 8192
+  host: 127.0.0.1
+  preferred_port: 8080
+  active_profile: balanced_7b
+  profiles:
+    balanced_7b:
+      model_name: qwen2.5-coder-7b-instruct
+      hf_repo: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M
+      context_size: 4096
+      n_gpu_layers: 99
+    quality_14b:
+      model_name: qwen2.5-coder-14b
+      hf_repo: Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M
+      context_size: 4096
+      n_gpu_layers: 99
 
 storage:
   base_dir: ~/.session-forge
@@ -58,34 +75,74 @@ session:
   timeout_seconds: 300
 
 services:
-  # Startup command templates used by runtime orchestration.
-  # These should run worker mode commands to avoid recursive daemon startup.
-  proxy_start_cmd: uv run session-forge proxy --foreground
-  mcp_server_start_cmd: uv run session-forge mcp-server --foreground
-
-  # Command used by the `service_up` MCP tool to start llama-server when it is down.
-  # Use --hf-repo to load directly from Hugging Face (recommended).
-  llama_start_cmd: >-
-    llama-server
-    --hf-repo Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M
-    --port 8080
-    --ctx-size 8192
-    --n-gpu-layers 99
-
-  # Fallback ranges when preferred ports are occupied by other processes.
-  proxy_port_range_start: 8888
-  proxy_port_range_end: 8898
-  mcp_server_port_range_start: 8000
-  mcp_server_port_range_end: 8010
-  llama_port_range_start: 8080
-  llama_port_range_end: 8090
+  fallback_port_pool:
+    start: 8000
+    end: 8099
 ```
+
+## Config Consolidation
+
+The config/runtime consolidation is implemented.
+
+### Implemented Direction
+
+- Store the canonical default config in `src/session_forge/default-config.yaml`.
+- Create `~/.config/session-forge/config.yaml` from that bundled file on first run.
+- Normalize managed services to `host` + `preferred_port`.
+- Replace llama `server_url` and `services.llama_start_cmd` duplication with
+  active-profile resolution under `llama`.
+- Replace per-service fallback ranges with a shared fallback port pool.
+- Reuse running services by checking `service-ports.json` first, while still
+  honoring configured host and validating service identity.
+
+### Current Shape
+
+```yaml
+proxy:
+  host: 127.0.0.1
+  preferred_port: 8888
+  start_cmd: uv run session-forge proxy --foreground
+
+mcp_server:
+  host: 127.0.0.1
+  preferred_port: 8000
+  start_cmd: uv run session-forge mcp-server --foreground
+
+llama:
+  host: 127.0.0.1
+  preferred_port: 8080
+  active_profile: balanced_7b
+  profiles:
+    balanced_7b:
+      model_name: qwen2.5-coder-7b-instruct
+      hf_repo: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M
+      context_size: 4096
+      n_gpu_layers: 99
+    quality_14b:
+      model_name: qwen2.5-coder-14b
+      hf_repo: Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M
+      context_size: 4096
+      n_gpu_layers: 99
+
+services:
+  fallback_port_pool:
+    start: 8000
+    end: 8099
+```
+
+### Migration Notes
+
+- Existing configs should continue loading during transition.
+- Configured host remains authoritative even when `service-ports.json` records a
+  previously used runtime endpoint.
+- Service identity remains the gate for reuse; a listening port alone is not
+  sufficient.
 
 ## Loading Priority
 
 1. `~/.config/session-forge/config.yaml` (primary)
 2. `SF_CONFIG` env var — override config file path (for testing only)
-3. Hard-coded defaults in `Config` dataclass (fallback if file missing)
+3. Packaged default file `src/session_forge/default-config.yaml` (first-run bootstrap source)
 
 `SF_BASE_DIR` env var is **removed**. Storage path comes from `config.yaml`
 `storage.base_dir` only.

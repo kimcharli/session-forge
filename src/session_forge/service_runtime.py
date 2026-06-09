@@ -12,13 +12,11 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
 
 import httpx
 
 from session_forge.config import Config, config
 from session_forge.paths import logs_dir, service_ports_path
-
 
 _STATE_LOCK = threading.Lock()
 _MANAGED_SERVICES = ("proxy", "mcp_server", "llama")
@@ -33,7 +31,7 @@ class ServiceSpec:
     range_end: int
     health_path: str
     expected_service_marker: str | None
-    start_cmd: str
+    start_args: list[str]
     cmd_signature: str
 
 
@@ -51,10 +49,17 @@ def _normalize_range(start: int, end: int) -> tuple[int, int]:
     return start, end
 
 
-def _candidate_ports(preferred: int, start: int, end: int) -> list[int]:
+def _candidate_ports(
+    preferred: int,
+    start: int,
+    end: int,
+    extra: tuple[int, ...] = (),
+) -> list[int]:
     start, end = _normalize_range(start, end)
-    ports = [preferred]
-    ports.extend(p for p in range(start, end + 1) if p != preferred)
+    ports: list[int] = []
+    for port in (*extra, preferred, *range(start, end + 1)):
+        if port not in ports:
+            ports.append(port)
     return ports
 
 
@@ -152,35 +157,28 @@ def _remove_state(service: str) -> None:
         _write_state_raw(data)
 
 
-def _url_host_port(url: str, default_port: int) -> tuple[str, int]:
-    parsed = urlparse(url)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or default_port
-    return host, port
-
-
 def _configured_port(service: str, cfg: Config) -> int:
     if service == "proxy":
-        return cfg.proxy.port
+        return cfg.proxy.preferred_port
     if service == "mcp_server":
-        return cfg.mcp_server.port
+        return cfg.mcp_server.preferred_port
     if service == "llama":
-        _, port = _url_host_port(cfg.llama.server_url, 8080)
-        return port
+        return cfg.llama.preferred_port
     raise ValueError(f"unknown service: {service}")
 
 
 def _service_spec(service: str, cfg: Config) -> ServiceSpec:
+    pool = cfg.services.fallback_port_pool
     if service == "proxy":
         return ServiceSpec(
             name="proxy",
             host=cfg.proxy.host,
-            preferred_port=cfg.proxy.port,
-            range_start=cfg.services.proxy_port_range_start,
-            range_end=cfg.services.proxy_port_range_end,
+            preferred_port=cfg.proxy.preferred_port,
+            range_start=pool.start,
+            range_end=pool.end,
             health_path="/healthz",
             expected_service_marker="proxy",
-            start_cmd=cfg.services.proxy_start_cmd,
+            start_args=shlex.split(cfg.proxy.start_cmd),
             cmd_signature="session-forge proxy",
         )
 
@@ -188,26 +186,33 @@ def _service_spec(service: str, cfg: Config) -> ServiceSpec:
         return ServiceSpec(
             name="mcp_server",
             host=cfg.mcp_server.host,
-            preferred_port=cfg.mcp_server.port,
-            range_start=cfg.services.mcp_server_port_range_start,
-            range_end=cfg.services.mcp_server_port_range_end,
+            preferred_port=cfg.mcp_server.preferred_port,
+            range_start=pool.start,
+            range_end=pool.end,
             health_path="/healthz",
             expected_service_marker="mcp_server",
-            start_cmd=cfg.services.mcp_server_start_cmd,
+            start_args=shlex.split(cfg.mcp_server.start_cmd),
             cmd_signature="session-forge mcp-server",
         )
 
     if service == "llama":
-        host, preferred_port = _url_host_port(cfg.llama.server_url, 8080)
         return ServiceSpec(
             name="llama",
-            host=host,
-            preferred_port=preferred_port,
-            range_start=cfg.services.llama_port_range_start,
-            range_end=cfg.services.llama_port_range_end,
+            host=cfg.llama.host,
+            preferred_port=cfg.llama.preferred_port,
+            range_start=pool.start,
+            range_end=pool.end,
             health_path="/health",
             expected_service_marker=None,
-            start_cmd=cfg.services.llama_start_cmd,
+            start_args=[
+                "llama-server",
+                "--hf-repo",
+                cfg.llama.hf_repo,
+                "--ctx-size",
+                str(cfg.llama.context_size),
+                "--n-gpu-layers",
+                str(cfg.llama.n_gpu_layers),
+            ],
             cmd_signature="llama-server",
         )
 
@@ -244,8 +249,17 @@ async def _is_valid_instance(spec: ServiceSpec, pid: int, port: int) -> bool:
     return await _health_matches(spec, port)
 
 
-async def _discover_running(spec: ServiceSpec) -> tuple[int, int] | None:
-    for port in _candidate_ports(spec.preferred_port, spec.range_start, spec.range_end):
+async def _discover_running(
+    spec: ServiceSpec,
+    recorded_port: int | None = None,
+) -> tuple[int, int] | None:
+    extra = (recorded_port,) if isinstance(recorded_port, int) else ()
+    for port in _candidate_ports(
+        spec.preferred_port,
+        spec.range_start,
+        spec.range_end,
+        extra=extra,
+    ):
         if not _port_in_use(spec.host, port):
             continue
         pid = _pid_for_port(port)
@@ -267,9 +281,8 @@ def _replace_or_append_port_arg(args: list[str], port: int) -> list[str]:
     return out
 
 
-def _build_start_args(start_cmd: str, port: int) -> list[str]:
-    args = shlex.split(start_cmd)
-    return _replace_or_append_port_arg(args, port)
+def _build_start_args(start_args: list[str], port: int) -> list[str]:
+    return _replace_or_append_port_arg(start_args, port)
 
 
 def _new_log_path(service: str) -> Path:
@@ -292,7 +305,13 @@ async def _wait_healthy(spec: ServiceSpec, port: int, timeout_seconds: float = 1
     return False
 
 
-def _runtime_record(spec: ServiceSpec, pid: int, port: int, reused: bool, log_file: str | None = None) -> dict:
+def _runtime_record(
+    spec: ServiceSpec,
+    pid: int,
+    port: int,
+    reused: bool,
+    log_file: str | None = None,
+) -> dict:
     rec = {
         "service_name": spec.name,
         "pid": pid,
@@ -336,7 +355,8 @@ async def ensure_service(service: str, allow_start: bool) -> dict:
                 "log_file": log_file,
             }
 
-    running = await _discover_running(spec)
+    recorded_port = port if isinstance(port, int) else None
+    running = await _discover_running(spec, recorded_port=recorded_port)
     if running is not None:
         pid, port = running
         _upsert_state(service, _runtime_record(spec, pid, port, reused=True, log_file=log_file))
@@ -362,12 +382,18 @@ async def ensure_service(service: str, allow_start: bool) -> dict:
         }
 
     errors: list[str] = []
-    for candidate in _candidate_ports(spec.preferred_port, spec.range_start, spec.range_end):
+    extra = (recorded_port,) if isinstance(recorded_port, int) else ()
+    for candidate in _candidate_ports(
+        spec.preferred_port,
+        spec.range_start,
+        spec.range_end,
+        extra=extra,
+    ):
         if _port_in_use(spec.host, candidate):
             errors.append(f"port {candidate} already in use")
             continue
 
-        args = _build_start_args(spec.start_cmd, candidate)
+        args = _build_start_args(spec.start_args, candidate)
         log_path = _new_log_path(service)
         _log_line(log_path, "INFO", f"starting service with args: {' '.join(args)}")
 
@@ -430,7 +456,12 @@ async def ensure_service(service: str, allow_start: bool) -> dict:
 def stop_service(service: str) -> dict:
     """Stop a managed service by pid from runtime state."""
     if service not in _MANAGED_SERVICES:
-        return {"service": service, "status": "unknown", "action": "none", "reason": "unknown service"}
+        return {
+            "service": service,
+            "status": "unknown",
+            "action": "none",
+            "reason": "unknown service",
+        }
 
     state = read_service_state()
     rec = state.get(service)
@@ -440,7 +471,12 @@ def stop_service(service: str) -> dict:
     pid = rec.get("pid")
     if not isinstance(pid, int) or not _pid_alive(pid):
         _remove_state(service)
-        return {"service": service, "status": "down", "action": "none", "reason": "stale pid record"}
+        return {
+            "service": service,
+            "status": "down",
+            "action": "none",
+            "reason": "stale pid record",
+        }
 
     log_file = rec.get("log_file")
     log_path = Path(log_file) if isinstance(log_file, str) and log_file else None
@@ -449,7 +485,12 @@ def stop_service(service: str) -> dict:
     except OSError as exc:
         if log_path:
             _log_line(log_path, "ERROR", f"stop failed for pid {pid}: {exc}")
-        return {"service": service, "status": "up", "action": "none", "reason": f"stop failed: {exc}"}
+        return {
+            "service": service,
+            "status": "up",
+            "action": "none",
+            "reason": f"stop failed: {exc}",
+        }
 
     deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline and _pid_alive(pid):

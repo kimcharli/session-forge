@@ -1,94 +1,100 @@
 """Configuration — loaded from ~/.config/session-forge/config.yaml.
 
-Written with defaults and full comments on first run.
+Bootstrapped from the packaged default-config.yaml on first run.
 Never overwritten once created.
 Override config file path with SF_CONFIG env var (testing only).
 """
 
 import os
+import shlex
 from dataclasses import dataclass, field
+from importlib.resources import files
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
-# ── Default config.yaml content ───────────────────────────────────────────────
-
-_DEFAULT_YAML = """\
-# session-forge configuration
-# Source: https://github.com/kimcharli/session-forge
-#
-# Data is stored under storage.base_dir:
-#   {base_dir}/sessions.db          — global SQLite DB (all projects, tools)
-#   {base_dir}/projects/{project}/{tool}/sessions/   — markdown transcripts
-#   {base_dir}/projects/{project}/{tool}/insights/   — LLM recommendations
-#
-# Edit this file to change ports, model, or storage location.
-# This file is never overwritten by session-forge once created.
-
-proxy:
-  host: 127.0.0.1
-  port: 8888
-
-mcp_server:
-  host: 127.0.0.1
-  port: 8000
-
-llama:
-  server_url: http://127.0.0.1:8080
-  model_name: qwen2.5-coder-14b
-  context_size: 8192
-
-storage:
-  base_dir: ~/.session-forge
-
-session:
-  timeout_seconds: 300
-
-services:
-    # Startup command templates used by service runtime orchestration.
-    proxy_start_cmd: uv run session-forge proxy --foreground
-    mcp_server_start_cmd: uv run session-forge mcp-server --foreground
-  # Command used by `service_up` MCP tool to start llama-server when it is down.
-  # Use --hf-repo to load directly from Hugging Face (recommended).
-  llama_start_cmd: >-
-    llama-server
-    --hf-repo Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M
-    --port 8080
-    --ctx-size 8192
-    --n-gpu-layers 99
-    # Port ranges used when configured/default ports are occupied by another process.
-    # The configured service port is always tried first, then remaining range values.
-    proxy_port_range_start: 8888
-    proxy_port_range_end: 8898
-    mcp_server_port_range_start: 8000
-    mcp_server_port_range_end: 8010
-    llama_port_range_start: 8080
-    llama_port_range_end: 8090
-"""
-
 # ── Dataclasses ───────────────────────────────────────────────────────────────
 
-@dataclass
-class ProxyConfig:
-    host: str = "127.0.0.1"
-    port: int = 8888
+def _packaged_default_config_text() -> str:
+    return files("session_forge").joinpath("default-config.yaml").read_text(encoding="utf-8")
 
 
 @dataclass
-class McpServerConfig:
+class ServiceConfig:
     host: str = "127.0.0.1"
-    port: int = 8000
+    preferred_port: int = 0
+    start_cmd: str = ""
 
     @property
     def url(self) -> str:
-        return f"http://{self.host}:{self.port}"
+        return f"http://{self.host}:{self.preferred_port}"
 
 
 @dataclass
-class LlamaConfig:
-    server_url: str = "http://127.0.0.1:8080"
-    model_name: str = "qwen2.5-coder-14b"
-    context_size: int = 8192
+class ProxyConfig(ServiceConfig):
+    preferred_port: int = 8888
+    start_cmd: str = "uv run session-forge proxy --foreground"
+
+
+@dataclass
+class McpServerConfig(ServiceConfig):
+    preferred_port: int = 8000
+    start_cmd: str = "uv run session-forge mcp-server --foreground"
+
+
+@dataclass
+class LlamaProfileConfig:
+    model_name: str = "qwen2.5-coder-7b-instruct"
+    hf_repo: str = "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M"
+    context_size: int = 4096
+    n_gpu_layers: int = 99
+
+
+def _default_llama_profiles() -> dict[str, LlamaProfileConfig]:
+    return {
+        "balanced_7b": LlamaProfileConfig(),
+        "quality_14b": LlamaProfileConfig(
+            model_name="qwen2.5-coder-14b",
+            hf_repo="Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M",
+            context_size=4096,
+            n_gpu_layers=99,
+        ),
+    }
+
+
+@dataclass
+class LlamaConfig(ServiceConfig):
+    preferred_port: int = 8080
+    active_profile: str = "balanced_7b"
+    profiles: dict[str, LlamaProfileConfig] = field(default_factory=_default_llama_profiles)
+
+    @property
+    def profile(self) -> LlamaProfileConfig:
+        if self.active_profile in self.profiles:
+            return self.profiles[self.active_profile]
+        if self.profiles:
+            return next(iter(self.profiles.values()))
+        fallback = LlamaProfileConfig()
+        self.profiles = {"balanced_7b": fallback}
+        self.active_profile = "balanced_7b"
+        return fallback
+
+    @property
+    def model_name(self) -> str:
+        return self.profile.model_name
+
+    @property
+    def context_size(self) -> int:
+        return self.profile.context_size
+
+    @property
+    def hf_repo(self) -> str:
+        return self.profile.hf_repo
+
+    @property
+    def n_gpu_layers(self) -> int:
+        return self.profile.n_gpu_layers
 
 
 @dataclass
@@ -102,22 +108,14 @@ class SessionConfig:
 
 
 @dataclass
+class PortPoolConfig:
+    start: int = 8000
+    end: int = 8099
+
+
+@dataclass
 class ServicesConfig:
-    proxy_start_cmd: str = "uv run session-forge proxy --foreground"
-    mcp_server_start_cmd: str = "uv run session-forge mcp-server --foreground"
-    llama_start_cmd: str = (
-        "llama-server"
-        " --hf-repo Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M"
-        " --port 8080"
-        " --ctx-size 8192"
-        " --n-gpu-layers 99"
-    )
-    proxy_port_range_start: int = 8888
-    proxy_port_range_end: int = 8898
-    mcp_server_port_range_start: int = 8000
-    mcp_server_port_range_end: int = 8010
-    llama_port_range_start: int = 8080
-    llama_port_range_end: int = 8090
+    fallback_port_pool: PortPoolConfig = field(default_factory=PortPoolConfig)
 
 
 @dataclass
@@ -145,31 +143,183 @@ def _ensure_config() -> Path:
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
-        path.write_text(_DEFAULT_YAML, encoding="utf-8")
+        path.write_text(_packaged_default_config_text(), encoding="utf-8")
     return path
 
 
 # ── Loader ────────────────────────────────────────────────────────────────────
 
-def _load() -> Config:
-    path = _ensure_config()
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+def _service_host_port(data: dict, default_port: int) -> tuple[str, int]:
+    host = "127.0.0.1"
+    port = default_port
+    if server_url := data.get("server_url"):
+        parsed = urlparse(server_url)
+        host = parsed.hostname or host
+        port = parsed.port or port
+    if "host" in data:
+        host = data["host"]
+    if "preferred_port" in data:
+        port = int(data["preferred_port"])
+    elif "port" in data:
+        port = int(data["port"])
+    return host, port
 
-    def _section(key, cls):
-        data = raw.get(key, {}) or {}
-        defaults = cls()
-        for f in defaults.__dataclass_fields__:
-            if f in data:
-                setattr(defaults, f, data[f])
-        return defaults
+
+def _load_proxy(raw_proxy: dict, raw_services: dict) -> ProxyConfig:
+    host, preferred_port = _service_host_port(raw_proxy, ProxyConfig().preferred_port)
+    return ProxyConfig(
+        host=host,
+        preferred_port=preferred_port,
+        start_cmd=raw_proxy.get("start_cmd")
+        or raw_services.get("proxy_start_cmd")
+        or ProxyConfig().start_cmd,
+    )
+
+
+def _load_mcp_server(raw_mcp_server: dict, raw_services: dict) -> McpServerConfig:
+    host, preferred_port = _service_host_port(raw_mcp_server, McpServerConfig().preferred_port)
+    return McpServerConfig(
+        host=host,
+        preferred_port=preferred_port,
+        start_cmd=raw_mcp_server.get("start_cmd")
+        or raw_services.get("mcp_server_start_cmd")
+        or McpServerConfig().start_cmd,
+    )
+
+
+def _parse_llama_start_cmd(start_cmd: str) -> dict[str, str | int]:
+    parsed: dict[str, str | int] = {}
+    args = shlex.split(start_cmd)
+    idx = 0
+    while idx < len(args):
+        arg = args[idx]
+        if arg == "--hf-repo" and idx + 1 < len(args):
+            parsed["hf_repo"] = args[idx + 1]
+            idx += 2
+            continue
+        if arg == "--ctx-size" and idx + 1 < len(args):
+            parsed["context_size"] = int(args[idx + 1])
+            idx += 2
+            continue
+        if arg == "--n-gpu-layers" and idx + 1 < len(args):
+            parsed["n_gpu_layers"] = int(args[idx + 1])
+            idx += 2
+            continue
+        idx += 1
+    return parsed
+
+
+def _default_repo_for_model(model_name: str) -> str:
+    if "14b" in model_name.lower():
+        return "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M"
+    return "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M"
+
+
+def _legacy_llama_profile(raw_llama: dict, raw_services: dict) -> LlamaProfileConfig:
+    defaults = LlamaProfileConfig(
+        model_name="qwen2.5-coder-14b",
+        hf_repo="Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M",
+        context_size=8192,
+        n_gpu_layers=99,
+    )
+    parsed_cmd = _parse_llama_start_cmd(raw_services.get("llama_start_cmd", ""))
+    model_name = raw_llama.get("model_name", defaults.model_name)
+    context_size = int(
+        raw_llama.get(
+            "context_size",
+            parsed_cmd.get("context_size", defaults.context_size),
+        )
+    )
+    return LlamaProfileConfig(
+        model_name=model_name,
+        hf_repo=str(parsed_cmd.get("hf_repo") or _default_repo_for_model(model_name)),
+        context_size=context_size,
+        n_gpu_layers=int(parsed_cmd.get("n_gpu_layers", defaults.n_gpu_layers)),
+    )
+
+
+def _load_llama(raw_llama: dict, raw_services: dict) -> LlamaConfig:
+    defaults = LlamaConfig()
+    host, preferred_port = _service_host_port(raw_llama, defaults.preferred_port)
+    raw_profiles = raw_llama.get("profiles") or {}
+
+    profiles: dict[str, LlamaProfileConfig] = {}
+    if raw_profiles:
+        for name, profile_data in raw_profiles.items():
+            profile_data = profile_data or {}
+            base = defaults.profiles.get(name, LlamaProfileConfig())
+            profiles[name] = LlamaProfileConfig(
+                model_name=profile_data.get("model_name", base.model_name),
+                hf_repo=profile_data.get("hf_repo", base.hf_repo),
+                context_size=int(profile_data.get("context_size", base.context_size)),
+                n_gpu_layers=int(profile_data.get("n_gpu_layers", base.n_gpu_layers)),
+            )
+        active_profile = raw_llama.get("active_profile", defaults.active_profile)
+    else:
+        active_profile = raw_llama.get("active_profile", "default")
+        profiles = {active_profile: _legacy_llama_profile(raw_llama, raw_services)}
+
+    if active_profile not in profiles:
+        active_profile = next(iter(profiles))
+
+    return LlamaConfig(
+        host=host,
+        preferred_port=preferred_port,
+        active_profile=active_profile,
+        profiles=profiles,
+    )
+
+
+def _load_services(raw_services: dict) -> ServicesConfig:
+    defaults = ServicesConfig()
+    pool_data = raw_services.get("fallback_port_pool") or {}
+    if pool_data:
+        start = int(pool_data.get("start", defaults.fallback_port_pool.start))
+        end = int(pool_data.get("end", defaults.fallback_port_pool.end))
+        return ServicesConfig(fallback_port_pool=PortPoolConfig(start=start, end=end))
+
+    legacy_starts = [
+        raw_services.get("proxy_port_range_start"),
+        raw_services.get("mcp_server_port_range_start"),
+        raw_services.get("llama_port_range_start"),
+    ]
+    legacy_ends = [
+        raw_services.get("proxy_port_range_end"),
+        raw_services.get("mcp_server_port_range_end"),
+        raw_services.get("llama_port_range_end"),
+    ]
+    starts = [int(value) for value in legacy_starts if value is not None]
+    ends = [int(value) for value in legacy_ends if value is not None]
+    if starts and ends:
+        return ServicesConfig(fallback_port_pool=PortPoolConfig(start=min(starts), end=max(ends)))
+    return defaults
+
+
+def _section(key: str, cls):
+    data = _raw_config.get(key, {}) or {}
+    defaults = cls()
+    for f in defaults.__dataclass_fields__:
+        if f in data:
+            setattr(defaults, f, data[f])
+    return defaults
+
+
+_raw_config: dict[str, dict] = {}
+
+
+def _load() -> Config:
+    global _raw_config
+    path = _ensure_config()
+    _raw_config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    raw_services = _raw_config.get("services", {}) or {}
 
     return Config(
-        proxy=_section("proxy", ProxyConfig),
-        mcp_server=_section("mcp_server", McpServerConfig),
-        llama=_section("llama", LlamaConfig),
+        proxy=_load_proxy(_raw_config.get("proxy", {}) or {}, raw_services),
+        mcp_server=_load_mcp_server(_raw_config.get("mcp_server", {}) or {}, raw_services),
+        llama=_load_llama(_raw_config.get("llama", {}) or {}, raw_services),
         storage=_section("storage", StorageConfig),
         session=_section("session", SessionConfig),
-        services=_section("services", ServicesConfig),
+        services=_load_services(raw_services),
     )
 
 

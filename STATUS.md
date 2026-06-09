@@ -13,6 +13,9 @@ Not ready for daily use.
 
 - Session continuity and project detection implementation:
 	- Track follow-on work in `specs/session-correlation.md` and `specs/project-detection.md`
+- Config/runtime consolidation follow-on verification:
+	- Track details in `specs/config.md` and `specs/implementation-tasks.md`
+	- Completed: bundled default config file, unified `preferred_port` service shape, llama profiles with `active_profile`, and shared fallback port pool
 
 ---
 
@@ -32,6 +35,17 @@ Not ready for daily use.
 | `analyzer/prompts.py` | ✅ Done | Prompt templates |
 | `analyzer/client.py` | ✅ Scaffolded | llama-server client written; no llama.cpp running yet |
 | `cli.py` services commands | ✅ Done | `services start/status/stop/restart` and daemon-first `mcp-server` |
+| Config/runtime consolidation | ✅ Done | Bundled `default-config.yaml`, profile-based llama config, unified `preferred_port`, shared fallback port pool |
+
+---
+
+## Recently Completed
+
+- Canonical default config moved to `src/session_forge/default-config.yaml` and used for first-run bootstrap.
+- Service config normalized around `host` + `preferred_port`.
+- Llama config consolidated to `llama.active_profile` and `llama.profiles`.
+- Startup reuse continues to honor configured host and verify service identity while checking `service-ports.json` first.
+- Per-service fallback ranges replaced with a shared fallback port pool.
 
 ---
 

@@ -92,6 +92,14 @@ llama-server --model ~/models/Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf \
   --port 8080 --ctx-size 8192 --n-gpu-layers 99
 ```
 
+Current config/runtime model:
+
+- Fresh installs will be bootstrapped from a bundled `src/session_forge/default-config.yaml`.
+- Managed services are normalized around `host` + `preferred_port`.
+- Llama model selection uses `llama.active_profile` + `llama.profiles`.
+- Default profile is balanced 7B, with 14B available as an optional profile.
+- Runtime startup consults `~/.config/session-forge/service-ports.json` first, then configured defaults, while still verifying service identity.
+
 ## Session Storage
 
 All data lives under `~/.session-forge/`:

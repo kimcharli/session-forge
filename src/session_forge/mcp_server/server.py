@@ -13,7 +13,6 @@ from session_forge.mcp_server import sidecar, storage
 from session_forge.paths import project_name_from_path
 from session_forge.service_runtime import ensure_service, service_status_snapshot
 
-
 # ── Ingest payload ─────────────────────────────────────────────────────────────
 
 class IngestPayload(BaseModel):
@@ -37,7 +36,7 @@ async def lifespan(app: FastAPI):
 
     cfg = config()
     host = cfg.mcp_server.host
-    port = int(os.environ.get("SF_MCP_EFFECTIVE_PORT", cfg.mcp_server.port))
+    port = int(os.environ.get("SF_MCP_EFFECTIVE_PORT", cfg.mcp_server.preferred_port))
     existing = read_service_state().get("mcp_server", {})
     log_file = existing.get("log_file") if isinstance(existing, dict) else None
     _upsert_state(
@@ -200,6 +199,7 @@ def get_session(session_id: str) -> dict:
 def trigger_analysis(session_id: str) -> dict:
     """Queue a session for llama.cpp analysis."""
     import asyncio
+
     from session_forge.analyzer.client import analyze_session
     session = storage.get_session(session_id)
     if not session:

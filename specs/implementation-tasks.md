@@ -247,3 +247,147 @@ Definition of done:
 - 2026-06-08: Initial task plan created and converted to checklist tracking.
 - 2026-06-09: Runtime orchestration implemented (identity checks, fallback ports, state file, MCP tool integration, CLI output updates).
 - 2026-06-09: Daemon-first CLI completed, per-instance logs added, checklist closed.
+
+---
+
+# Follow-Up — Config Consolidation And Llama Profiles
+
+Status: COMPLETED
+Last Updated: 2026-06-09
+Owner: @ckim
+Tracking: This file also tracks the next configuration/runtime cleanup pass.
+
+## Goal
+
+Consolidate runtime configuration so service definitions are consistent, llama
+model configuration is defined once through selectable profiles, and fresh
+installs are bootstrapped from a bundled default config file.
+
+## Agreed Design Decisions
+
+- Llama uses `active_profile` to select one entry from `llama.profiles`.
+- There is no separate llama launch block that duplicates profile values.
+- Default config is stored in `src/session_forge/default-config.yaml`.
+- When `~/.config/session-forge/config.yaml` is absent, session-forge creates it
+   from the bundled default file.
+- Runtime startup checks `~/.config/session-forge/service-ports.json` first.
+- Startup honors configured host and verifies service identity before reuse.
+- Service configs use `preferred_port` instead of mixed `port` / `server_url`
+   conventions.
+- Fallback port allocation uses a shared pool instead of per-service ranges.
+
+## Scope
+
+In scope:
+
+- Move default YAML content out of `config.py` into a packaged YAML file.
+- Unify service endpoint shape around `host` + `preferred_port`.
+- Replace llama `server_url` / `llama_start_cmd` duplication with resolved
+   profile settings.
+- Rework runtime port selection to consult `service-ports.json`, then
+   `preferred_port`, then the shared pool.
+- Update CLI, tests, and docs to the new config schema.
+
+Out of scope:
+
+- Cross-host service discovery.
+- Multi-user config management.
+- Remote llama providers.
+
+## Task Breakdown (Execution Checklist)
+
+### 1. Bundled Default Config
+
+Owner: @ckim
+Status: Completed
+
+- [x] Add `src/session_forge/default-config.yaml` as the canonical default.
+- [x] Create `~/.config/session-forge/config.yaml` from the bundled file when absent.
+- [x] Remove the large embedded default YAML string from `config.py`.
+
+Target files:
+
+- `src/session_forge/default-config.yaml`
+- `src/session_forge/config.py`
+- `specs/config.md`
+
+### 2. Unified Service Shape
+
+Owner: @ckim
+Status: Completed
+
+- [x] Standardize `proxy`, `mcp_server`, and `llama` on `host` + `preferred_port`.
+- [x] Provide derived URL helpers where callers need full endpoints.
+- [x] Keep configured host authoritative during runtime reuse checks.
+
+Target files:
+
+- `src/session_forge/config.py`
+- `src/session_forge/service_runtime.py`
+- `src/session_forge/cli.py`
+- `specs/config.md`
+
+### 3. Llama Profile Resolution
+
+Owner: @ckim
+Status: Completed
+
+- [x] Add `llama.active_profile` and `llama.profiles`.
+- [x] Resolve runtime launch args and analyzer request model from the active profile.
+- [x] Keep 7B as the balanced local default and allow 14B as an optional profile.
+
+Target files:
+
+- `src/session_forge/config.py`
+- `src/session_forge/service_runtime.py`
+- `src/session_forge/analyzer/client.py`
+- `specs/config.md`
+
+### 4. Shared Fallback Port Pool
+
+Owner: @ckim
+Status: Completed
+
+- [x] Replace per-service fallback ranges with one shared pool.
+- [x] Keep per-service `preferred_port` as the first startup candidate.
+- [x] Try recorded runtime ports from `service-ports.json` before configured fallbacks.
+
+Target files:
+
+- `src/session_forge/config.py`
+- `src/session_forge/service_runtime.py`
+- `tests/test_service_runtime.py`
+- `specs/config.md`
+
+### 5. Compatibility And Documentation
+
+Owner: @ckim
+Status: Completed
+
+- [x] Preserve backward-compatible loading for existing user configs during migration.
+- [x] Update README, status, and specs once implementation lands.
+- [x] Add or update tests covering profile selection and runtime reuse order.
+
+Target files:
+
+- `README.md`
+- `STATUS.md`
+- `specs/config.md`
+- `tests/test_service_runtime.py`
+- `tests/conftest.py`
+
+## Proposed Delivery Order
+
+1. Bundled default config + loader refactor
+2. Unified service schema + llama profile resolution
+3. Runtime reuse order + shared port pool
+4. Tests
+5. README/spec/status sync
+
+## Follow-Up Execution Log
+
+- 2026-06-09: Implemented profile-based llama config with `active_profile`.
+- 2026-06-09: Added bundled `src/session_forge/default-config.yaml` first-run bootstrap.
+- 2026-06-09: Unified service config on `host` + `preferred_port` and shared fallback port pool.
+- 2026-06-09: Updated runtime reuse order to consult `service-ports.json` first while honoring configured host and identity checks.
+- 2026-06-09: Updated CLI/analyzer call sites and validated with full test suite.

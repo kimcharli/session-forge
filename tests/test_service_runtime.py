@@ -32,7 +32,10 @@ async def test_ensure_service_reuses_identity_matched_runtime_record(tmp_config,
 
 
 @pytest.mark.asyncio
-async def test_ensure_service_starts_on_fallback_port_when_preferred_stolen(tmp_config, monkeypatch):
+async def test_ensure_service_starts_on_fallback_port_when_preferred_stolen(
+    tmp_config,
+    monkeypatch,
+):
     from session_forge.service_runtime import ensure_service
 
     class DummyProc:
@@ -72,7 +75,7 @@ async def test_ensure_service_starts_on_fallback_port_when_preferred_stolen(tmp_
 async def test_ensure_service_down_when_not_running_and_start_disallowed(monkeypatch):
     from session_forge.service_runtime import ensure_service
 
-    async def none_found(_spec):
+    async def none_found(_spec, recorded_port=None):
         return None
 
     monkeypatch.setattr("session_forge.service_runtime._discover_running", none_found)

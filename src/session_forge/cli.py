@@ -33,7 +33,7 @@ def proxy(
 
     cfg = config().proxy
     host = host or cfg.host
-    port = port or cfg.port
+    port = port or cfg.preferred_port
 
     if not foreground:
         rec = asyncio.run(ensure_service("proxy", allow_start=True))
@@ -68,7 +68,7 @@ def mcp_server(
         _print_service_summary(result)
         return
 
-    port = port or int(os.environ.get("SF_MCP_EFFECTIVE_PORT", cfg.port))
+    port = port or int(os.environ.get("SF_MCP_EFFECTIVE_PORT", cfg.preferred_port))
     os.environ["SF_MCP_EFFECTIVE_PORT"] = str(port)
     typer.echo(f"Starting MCP server on {host}:{port}")
     uvicorn.run(http_app, host=host, port=port, log_level="info")
@@ -175,7 +175,7 @@ def show_paths():
     console.print(f"[bold]Logs:[/bold]      {logs_dir()}")
     console.print(f"[bold]State file:[/bold] {service_ports_path()}")
     console.print(
-        f"[bold]Proxy:[/bold]     {config().proxy.host}:{config().proxy.port}"
+        f"[bold]Proxy:[/bold]     {config().proxy.url}"
         f" (active: {_runtime_port('proxy')})"
     )
     console.print(
@@ -183,7 +183,7 @@ def show_paths():
         f" (active: {_runtime_port('mcp_server')})"
     )
     console.print(
-        f"[bold]Llama:[/bold]     {config().llama.server_url} ({config().llama.model_name})"
+        f"[bold]Llama:[/bold]     {config().llama.url} ({config().llama.model_name})"
         f" (active: {_runtime_port('llama')})"
     )
 

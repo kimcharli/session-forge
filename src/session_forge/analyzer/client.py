@@ -36,7 +36,7 @@ async def analyze_session(session, messages: list) -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                f"{cfg.server_url}/v1/chat/completions",
+                f"{cfg.url}/v1/chat/completions",
                 json=payload,
             )
             response.raise_for_status()

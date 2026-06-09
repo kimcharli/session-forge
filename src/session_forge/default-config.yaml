@@ -1,0 +1,47 @@
+# session-forge configuration
+# Source: https://github.com/kimcharli/session-forge
+#
+# Data is stored under storage.base_dir:
+#   {base_dir}/sessions.db          — global SQLite DB (all projects, tools)
+#   {base_dir}/projects/{project}/{tool}/sessions/   — markdown transcripts
+#   {base_dir}/projects/{project}/{tool}/insights/   — LLM recommendations
+#
+# Edit this file to change ports, model, or storage location.
+# This file is copied to ~/.config/session-forge/config.yaml on first run.
+
+proxy:
+  host: 127.0.0.1
+  preferred_port: 8888
+  start_cmd: uv run session-forge proxy --foreground
+
+mcp_server:
+  host: 127.0.0.1
+  preferred_port: 8000
+  start_cmd: uv run session-forge mcp-server --foreground
+
+llama:
+  host: 127.0.0.1
+  preferred_port: 8080
+  active_profile: balanced_7b
+  profiles:
+    balanced_7b:
+      model_name: qwen2.5-coder-7b-instruct
+      hf_repo: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M
+      context_size: 4096
+      n_gpu_layers: 99
+    quality_14b:
+      model_name: qwen2.5-coder-14b
+      hf_repo: Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M
+      context_size: 4096
+      n_gpu_layers: 99
+
+storage:
+  base_dir: ~/.session-forge
+
+session:
+  timeout_seconds: 300
+
+services:
+  fallback_port_pool:
+    start: 8000
+    end: 8099

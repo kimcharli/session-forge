@@ -1,23 +1,41 @@
 """Shared test fixtures."""
 
 import os
+
 import pytest
 
 _DEFAULT_CONFIG = """\
 proxy:
   host: 127.0.0.1
-  port: 8888
+  preferred_port: 8888
+  start_cmd: uv run session-forge proxy --foreground
 mcp_server:
   host: 127.0.0.1
-  port: 8000
+  preferred_port: 8000
+  start_cmd: uv run session-forge mcp-server --foreground
 llama:
-  server_url: http://127.0.0.1:8080
-  model_name: qwen2.5-coder-14b
-  context_size: 8192
+  host: 127.0.0.1
+  preferred_port: 8080
+  active_profile: balanced_7b
+  profiles:
+    balanced_7b:
+      model_name: qwen2.5-coder-7b-instruct
+      hf_repo: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M
+      context_size: 4096
+      n_gpu_layers: 99
+    quality_14b:
+      model_name: qwen2.5-coder-14b
+      hf_repo: Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M
+      context_size: 4096
+      n_gpu_layers: 99
 storage:
   base_dir: {base_dir}
 session:
   timeout_seconds: 300
+services:
+  fallback_port_pool:
+    start: 8000
+    end: 8099
 """
 
 
